@@ -1,52 +1,79 @@
 ﻿open System
 open System.IO
 open System.Reflection
+open System.Runtime.Loader
 open Raylib_cs
-open GameLogic
 open GameAbstractions
 
-let loadAssembly path =
-    let bytes = File.ReadAllBytes(path)
-    let asm = Assembly.Load(bytes)
-    let factoryType = asm.GetType("GameLogic.GameFactory")
-    let createMethod = factoryType.GetMethod("Create")
-    createMethod.Invoke(null, [||]) :?> IGame
+let dllPath = Path.GetFullPath("GameLogic/bin/Debug/net9.0/GameLogic.dll")
+
+let mutable lastWriteTime = DateTime.MinValue
+let mutable loadContext: AssemblyLoadContext option = None
+let mutable game: IGame option = None
+
+let loadGame () =
+    try
+        if File.Exists(dllPath) then
+            printfn "Loading game from %s" dllPath
+
+            // Unload previous context if exists
+            match loadContext with
+            | Some ctx ->
+                try
+                    ctx.Unload()
+                    GC.Collect()
+                    GC.WaitForPendingFinalizers()
+                with e ->
+                    printfn "Warning: failed to unload: %s" e.Message
+            | None -> ()
+
+            // Create new context and load assembly bytes
+            let ctx = new AssemblyLoadContext(Guid.NewGuid().ToString(), isCollectible = true)
+
+            use fs =
+                new FileStream(dllPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite)
+
+            let asm = ctx.LoadFromStream(fs)
+
+            // Find the game type and instance
+            let t =
+                asm.GetTypes()
+                |> Array.find (fun t -> typeof<IGame>.IsAssignableFrom(t) && not t.IsInterface)
+
+            let instance = Activator.CreateInstance(t) :?> IGame
+            instance.Init()
+
+            loadContext <- Some ctx
+            game <- Some instance
+
+            printfn "✅ Game reloaded successfully."
+    with e ->
+        printfn "Failed to load: %s" e.Message
+
+let tryReloadGame () =
+    let info = FileInfo(dllPath)
+
+    if info.Exists && info.LastWriteTime > lastWriteTime then
+        printfn "\n🔄 Detected DLL change — reloading..."
+        lastWriteTime <- info.LastWriteTime
+        loadGame ()
 
 [<EntryPoint>]
 let main _ =
-    let logicDll =
-        Directory.GetFiles("GameLogic/bin/Debug", "GameLogic.dll", SearchOption.AllDirectories)
-        |> Array.head
-        |> Path.GetFullPath
-
-    let mutable game = loadAssembly logicDll
-    let mutable lastWrite = File.GetLastWriteTime(logicDll)
-
-    Raylib.InitWindow(800, 600, "F# Hot Reload")
+    Raylib.InitWindow(800, 600, "F# Hot Reload Demo")
     Raylib.SetTargetFPS(60)
 
+    loadGame ()
+    lastWriteTime <- FileInfo(dllPath).LastWriteTime
+
     while not (Raylib.WindowShouldClose() |> CBool.op_Implicit) do
-        // Watch for rebuild
-        let currentWrite = File.GetLastWriteTime(logicDll)
+        tryReloadGame ()
 
-        if currentWrite > lastWrite then
-            lastWrite <- currentWrite
-
-            try
-                let state = game.SaveState()
-                let newGame = loadAssembly logicDll
-                newGame.LoadState(state)
-                game <- newGame
-            with ex ->
-                printfn "Reload failed: %A" ex
-
-        let dt = Raylib.GetFrameTime()
-        game.Update(dt)
-
-        Raylib.BeginDrawing()
-        Raylib.ClearBackground(Color.RayWhite)
-        game.Draw()
-        Raylib.EndDrawing()
+        match game with
+        | Some g ->
+            g.Update()
+            g.Draw()
+        | None -> ()
 
     Raylib.CloseWindow()
     0
