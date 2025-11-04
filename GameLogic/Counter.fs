@@ -1,10 +1,15 @@
-module Counter
+namespace GameLogic
 
-type State = { count: int }
+open Raylib_cs
+open System.Numerics
+open GameAbstractions
 
-let init () = { count = 0 }
+module Counter =
+    let init (c: CounterState) =
+        c.time <- 0f
 
-let update state = { state with count = state.count + 1 }
+    let update (c: CounterState) =
+        c.time <- c.time + Raylib.GetFrameTime()
 
-// let draw state =
-//     Raylib.DrawCircle((int state.X), (int state.Y), 20f, Color.Red)
+    let draw (c: CounterState) =
+        Raylib.DrawText("time: " + (c.time |> int |> string), 10, 30, 20, Color.Black)

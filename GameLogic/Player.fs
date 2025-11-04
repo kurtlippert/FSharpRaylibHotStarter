@@ -1,18 +1,20 @@
-module Player
+namespace GameLogic
 
 open Raylib_cs
+open System.Numerics
+open GameAbstractions
 
-type State = { mutable X: float32; mutable Y: float32 }
+module Player =
+    let init (p: PlayerState) =
+        p.Pos <- Vector2(100f, 100f)
 
-let init () = { X = 400f; Y = 300f }
+    let update (p: PlayerState) =
+        let speed = 3f
 
-let update state =
-    let speed = 3f
+        if p.Pos.X > (Raylib.GetScreenWidth() |> float32) then
+            p.Pos.X <- 0f
+        else
+            p.Pos.X <- p.Pos.X + speed
 
-    if state.X > (Raylib.GetScreenWidth() |> float32) then
-        state.X <- 0f
-    else
-        state.X <- state.X + speed
-
-let draw state =
-    Raylib.DrawCircle((int state.X), (int state.Y), 20f, Color.Red)
+    let draw (p: PlayerState) =
+        Raylib.DrawCircle(int p.Pos.X, int p.Pos.Y, 20f, Color.Blue)

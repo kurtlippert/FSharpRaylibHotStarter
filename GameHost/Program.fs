@@ -5,83 +5,56 @@ open System.Runtime.Loader
 open Raylib_cs
 open GameAbstractions
 
-let dllPath = Path.GetFullPath "GameLogic/bin/Debug/net9.0/GameLogic.dll"
+let dllPath = Path.GetFullPath("GameLogic/bin/Debug/net9.0/GameLogic.dll")
 
 let mutable lastWriteTime = DateTime.MinValue
 let mutable loadContext: AssemblyLoadContext option = None
-let mutable game: IGame option = None
-let mutable savedState: Map<string, obj> = Map.empty
+let mutable gameLogic: IGameLogic option = None
 
-/// Reflectively copy public instance fields from one object to a Map
-let captureState (instance: obj) : Map<string, obj> =
-    let t = instance.GetType()
+let gameState =
+    { Player = { Pos = System.Numerics.Vector2(0f, 0f) }
+      Enemies = []
+      Counter = { time = 0f } }
 
-    t.GetFields(BindingFlags.Instance ||| BindingFlags.Public ||| BindingFlags.NonPublic)
-    |> Array.fold (fun acc f -> acc.Add(f.Name, f.GetValue instance)) Map.empty
-
-/// Apply stored values to matching fields on new instance
-let restoreState (instance: obj) (state: Map<string, obj>) =
-    let t = instance.GetType()
-
-    for f in t.GetFields(BindingFlags.Instance ||| BindingFlags.Public ||| BindingFlags.NonPublic) do
-        match state.TryFind f.Name with
-        | Some v when f.FieldType.IsAssignableFrom(v.GetType()) ->
-            try
-                f.SetValue(instance, v)
-            with _ ->
-                ()
-        | _ -> ()
-
-    instance
+let mutable lastGameTypeName = ""
 
 let loadGame () =
     try
-        if File.Exists dllPath then
+        if File.Exists(dllPath) then
             printfn "Loading game from %s" dllPath
 
-            // Unload previous context if exists
             match loadContext with
             | Some ctx ->
-                match game with
-                | Some g -> savedState <- captureState g
-                | None -> ()
-
                 ctx.Unload()
                 GC.Collect()
                 GC.WaitForPendingFinalizers()
-                printfn "Unloaded previous assembly."
             | None -> ()
 
-            // Create new context and load fresh assembly
             let ctx = new AssemblyLoadContext(Guid.NewGuid().ToString(), isCollectible = true)
+            use fs = new FileStream(dllPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite)
+            let asm = ctx.LoadFromStream(fs)
 
-            use fs =
-                new FileStream(dllPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite)
+            let t = asm.GetTypes() |> Array.find (fun t -> typeof<IGameLogic>.IsAssignableFrom(t))
+            let typeName = t.FullName
 
-            let asm = ctx.LoadFromStream fs
+            let instance = Activator.CreateInstance(t) :?> IGameLogic
+            let reinitNeeded = typeName <> lastGameTypeName
 
-            // Find the IGame implementation
-            let t =
-                asm.GetTypes()
-                |> Array.find (fun t -> typeof<IGame>.IsAssignableFrom t && not t.IsInterface && not t.IsAbstract)
-
-            let instance = Activator.CreateInstance(t) :?> IGame
-
-            // Attempt to restore previous state
-            if not savedState.IsEmpty then
-                printfn "Restoring previous state..."
-                restoreState instance savedState |> ignore
-            else
-                instance.Init()
-
+            lastGameTypeName <- typeName
             loadContext <- Some ctx
-            game <- Some instance
-            printfn "✅ Game reloaded successfully."
+            gameLogic <- Some instance
+
+            if reinitNeeded then
+                printfn "🧩 Type changed (%s) — reinitializing state" typeName
+                instance.Init(gameState)
+            else
+                printfn "♻️ Reloaded code, keeping existing state"
     with e ->
         printfn "Failed to load: %s" e.Message
 
+
 let tryReloadGame () =
-    let info = FileInfo dllPath
+    let info = FileInfo(dllPath)
 
     if info.Exists && info.LastWriteTime > lastWriteTime then
         printfn "\n🔄 Detected DLL change — reloading..."
@@ -90,8 +63,8 @@ let tryReloadGame () =
 
 [<EntryPoint>]
 let main _ =
-    Raylib.InitWindow(400, 300, "F# Hot Reload Demo")
-    Raylib.SetTargetFPS 60
+    Raylib.InitWindow(400, 300, "F# Modular Hot Reload")
+    Raylib.SetTargetFPS(60)
 
     loadGame ()
     lastWriteTime <- FileInfo(dllPath).LastWriteTime
@@ -99,10 +72,10 @@ let main _ =
     while not (Raylib.WindowShouldClose() |> CBool.op_Implicit) do
         tryReloadGame ()
 
-        match game with
+        match gameLogic with
         | Some g ->
-            g.Update()
-            g.Draw()
+            g.Update(gameState)
+            g.Draw(gameState)
         | None -> ()
 
     Raylib.CloseWindow()
