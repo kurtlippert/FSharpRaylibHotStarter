@@ -1,15 +1,13 @@
-namespace GameLogic
+module Counter
 
 open Raylib_cs
-open System.Numerics
-open GameAbstractions
 
-module Counter =
-    let init (c: CounterState) =
-        c.time <- 0f
+type Counter = { mutable time: float32 }
 
-    let update (c: CounterState) =
-        c.time <- c.time + Raylib.GetFrameTime()
+let init () : Counter = { time = 0f }
 
-    let draw (c: CounterState) =
-        Raylib.DrawText("time: " + (c.time |> int |> string), 10, 30, 20, Color.Black)
+let update (c: Counter) =
+    c.time <- c.time + Raylib.GetFrameTime()
+
+let draw (c: Counter) =
+    Raylib.DrawText("time: " + (c.time |> int |> string), 10, 30, 20, Color.Black)

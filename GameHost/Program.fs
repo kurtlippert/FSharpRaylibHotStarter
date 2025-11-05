@@ -9,20 +9,15 @@ let dllPath = Path.GetFullPath("GameLogic/bin/Debug/net9.0/GameLogic.dll")
 
 let mutable lastWriteTime = DateTime.MinValue
 let mutable loadContext: AssemblyLoadContext option = None
-let mutable gameLogic: IGameLogic option = None
-
-let gameState =
-    { Player = { Pos = System.Numerics.Vector2(0f, 0f) }
-      Enemies = []
-      Counter = { time = 0f } }
-
-let mutable lastGameTypeName = ""
+let mutable game: IGame option = None
+let mutable stateJson: string option = None
 
 let loadGame () =
     try
         if File.Exists(dllPath) then
             printfn "Loading game from %s" dllPath
 
+            // unload previous context if present
             match loadContext with
             | Some ctx ->
                 ctx.Unload()
@@ -34,28 +29,31 @@ let loadGame () =
             use fs = new FileStream(dllPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite)
             let asm = ctx.LoadFromStream(fs)
 
-            let t = asm.GetTypes() |> Array.find (fun t -> typeof<IGameLogic>.IsAssignableFrom(t))
-            let typeName = t.FullName
+            // find type implementing IGame
+            let gameType =
+                asm.GetTypes()
+                |> Array.find (fun t -> typeof<IGame>.IsAssignableFrom(t))
 
-            let instance = Activator.CreateInstance(t) :?> IGameLogic
-            let reinitNeeded = typeName <> lastGameTypeName
+            let instance = Activator.CreateInstance(gameType) :?> IGame
 
-            lastGameTypeName <- typeName
+            let restoredState =
+                match stateJson with
+                | Some json ->
+                    printfn "Restoring game state from JSON..."
+                    instance.Init(Some json)
+                | None ->
+                    printfn "Initializing new game state..."
+                    instance.Init(None)
+
+            game <- Some instance
+            stateJson <- Some restoredState
             loadContext <- Some ctx
-            gameLogic <- Some instance
-
-            if reinitNeeded then
-                printfn "🧩 Type changed (%s) — reinitializing state" typeName
-                instance.Init(gameState)
-            else
-                printfn "♻️ Reloaded code, keeping existing state"
+            printfn "✅ Game reloaded successfully."
     with e ->
-        printfn "Failed to load: %s" e.Message
-
+        printfn "❌ Failed to load: %s" e.Message
 
 let tryReloadGame () =
     let info = FileInfo(dllPath)
-
     if info.Exists && info.LastWriteTime > lastWriteTime then
         printfn "\n🔄 Detected DLL change — reloading..."
         lastWriteTime <- info.LastWriteTime
@@ -63,7 +61,7 @@ let tryReloadGame () =
 
 [<EntryPoint>]
 let main _ =
-    Raylib.InitWindow(400, 300, "F# Modular Hot Reload")
+    Raylib.InitWindow(400, 300, "F# Hot Reload")
     Raylib.SetTargetFPS(60)
 
     loadGame ()
@@ -72,11 +70,12 @@ let main _ =
     while not (Raylib.WindowShouldClose() |> CBool.op_Implicit) do
         tryReloadGame ()
 
-        match gameLogic with
-        | Some g ->
-            g.Update(gameState)
-            g.Draw(gameState)
-        | None -> ()
+        match game, stateJson with
+        | Some g, Some s ->
+            let newState = g.Update(s)
+            g.Draw(newState)
+            stateJson <- Some newState
+        | _ -> ()
 
     Raylib.CloseWindow()
     0

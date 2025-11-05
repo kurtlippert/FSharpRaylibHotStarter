@@ -2,27 +2,67 @@
 
 open Raylib_cs
 open GameAbstractions
+open Player
+open Counter
 
-type ModularGame() =
-    interface IGameLogic with
-        member _.Init state =
-            // Generally register the slices
-            Player.init state.Player
-            Counter.init state.Counter
+module Json =
+    open System.Text.Json
+    open System.Text.Json.Serialization
 
-            // ad-hoc items
-            state.Enemies <- []
+    let options =
+        let opts =
+            JsonSerializerOptions(WriteIndented = false, PropertyNamingPolicy = JsonNamingPolicy.CamelCase)
 
-        member _.Update state =
-            // generally register the slices
-            Player.update state.Player
-            Counter.update state.Counter
+        opts.IncludeFields <- true
+        opts.Converters.Add(JsonFSharpConverter())
+        opts
 
-        member _.Draw state =
+    let inline tryDeserialize<'Model> (json: string) =
+        try
+            let v = JsonSerializer.Deserialize<'Model>(json, options)
+            if isNull (box v) then None else Some v
+        with _ ->
+            None
+
+    let serialize (model: 'Model) = JsonSerializer.Serialize(model, options)
+
+    let deserialize<'Model> (json: string) =
+        JsonSerializer.Deserialize<'Model>(json, options)
+
+// [<CLIMutable>]
+type Model =
+    { mutable Player: Player
+      mutable Counter: Counter }
+
+type Game() =
+    interface IGame with
+        member _.Init(saved: string option) =
+            let fresh =
+                { Player = Player.init
+                  Counter = Counter.init () }
+
+            let restored =
+                match saved with
+                | Some json -> Json.tryDeserialize<Model> json |> Option.defaultValue fresh
+                | None -> fresh
+
+            Json.serialize (restored)
+
+        member _.Update(json: string) =
+            let model = Json.deserialize<Model> (json)
+
+            Player.update model.Player
+            Counter.update model.Counter
+
+            Json.serialize (model)
+
+        member _.Draw(json: string) =
+            let m = Json.deserialize<Model> (json)
             Raylib.BeginDrawing()
-            Raylib.ClearBackground Color.RayWhite
 
-            Player.draw state.Player
-            Counter.draw state.Counter
+            Raylib.ClearBackground(Color.RayWhite)
+
+            Player.draw (m.Player)
+            Counter.draw (m.Counter)
 
             Raylib.EndDrawing()
