@@ -8,8 +8,8 @@ let init () =
     { Player = Player.init ()
       Counter = Counter.init () }
 
-// This is the important part:
-// Applies static values from code INTO the live model (no state loss)
+/// Applies the model overrides from our model slices.  
+/// NOTE: Useful for hot-reload, but not for any runtime reasons.
 let modelOverride (m: Model) =
     Player.applyStaticOverrides m.Player
     Counter.applyStaticOverrides m.Counter
