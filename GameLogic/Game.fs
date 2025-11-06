@@ -2,8 +2,7 @@
 
 open Raylib_cs
 open GameAbstractions
-open Player
-open Counter
+open Model
 
 module Json =
     open System.Text.Json
@@ -24,45 +23,36 @@ module Json =
         with _ ->
             None
 
-    let serialize (model: 'Model) = JsonSerializer.Serialize(model, options)
+    let serialize (model: 'Model) =
+        JsonSerializer.Serialize(model, options)
 
     let deserialize<'Model> (json: string) =
         JsonSerializer.Deserialize<'Model>(json, options)
 
-// [<CLIMutable>]
-type Model =
-    { mutable Player: Player
-      mutable Counter: Counter }
-
 type Game() =
     interface IGame with
-        member _.Init(saved: string option) =
-            let fresh =
-                { Player = Player.init
-                  Counter = Counter.init () }
+        member _.Init(saved) =
+            let model =
+                match saved |> Option.bind Json.tryDeserialize with
+                | Some m -> m
+                | None -> Model.init ()
 
-            let restored =
-                match saved with
-                | Some json -> Json.tryDeserialize<Model> json |> Option.defaultValue fresh
-                | None -> fresh
+            modelOverride model |> Json.serialize
 
-            Json.serialize (restored)
-
-        member _.Update(json: string) =
-            let model = Json.deserialize<Model> (json)
-
-            Player.update model.Player
-            Counter.update model.Counter
-
-            Json.serialize (model)
-
-        member _.Draw(json: string) =
+        member _.Update(json) =
             let m = Json.deserialize<Model> (json)
-            Raylib.BeginDrawing()
 
+            Player.update m.Player
+            Counter.update m.Counter
+
+            modelOverride m |> Json.serialize
+
+        member _.Draw(json) =
+            let m = Json.deserialize<Model> json
+            Raylib.BeginDrawing()
             Raylib.ClearBackground(Color.RayWhite)
 
-            Player.draw (m.Player)
-            Counter.draw (m.Counter)
+            Player.draw m.Player
+            Counter.draw m.Counter
 
             Raylib.EndDrawing()
