@@ -21,6 +21,6 @@
 
 ## Improvements
 Are there any? Currently wondering about:
-- [ ] Avoiding re-inits on model slice changes (mainly additions)
+- [x] Avoiding re-inits on model slice changes (mainly additions)
 - [ ] Deprecating `modelOverride` (why is it necessary?)
 - [ ] Avoiding `|> CBool.op_Implicit` (maybe not worth a util...)
