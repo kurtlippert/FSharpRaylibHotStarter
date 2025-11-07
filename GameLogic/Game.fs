@@ -7,6 +7,7 @@ open Model
 module Json =
     open System.Text.Json
     open System.Text.Json.Serialization
+    open System.Text.Json.Nodes
 
     let options =
         let opts =
@@ -16,12 +17,23 @@ module Json =
         opts.Converters.Add(JsonFSharpConverter())
         opts
 
-    let inline tryDeserialize<'Model> (json: string) =
-        try
-            let v = JsonSerializer.Deserialize<'Model>(json, options)
-            if isNull (box v) then None else Some v
-        with _ ->
-            None
+    let mergeJson (freshJson: string) (savedJson: string) : string =
+        let freshNode = JsonNode.Parse(freshJson) :?> JsonObject
+        let savedNode = JsonNode.Parse(savedJson) :?> JsonObject
+
+        let rec merge (intoObj: JsonObject) (fromObj: JsonObject) =
+            for KeyValue(k, vSaved) in fromObj do
+                match vSaved, intoObj[k] with
+                // Both are objects → recursively merge
+                | (:? JsonObject as savedChild), (:? JsonObject as intoChild) ->
+                    merge intoChild savedChild
+
+                // Otherwise → overwrite intoObj with a CLONE of saved value
+                | _ ->
+                    intoObj[k] <- vSaved.DeepClone()
+
+        merge freshNode savedNode
+        freshNode.ToJsonString()
 
     let serialize (model: 'Model) =
         JsonSerializer.Serialize(model, options)
@@ -32,12 +44,17 @@ module Json =
 type Game() =
     interface IGame with
         member _.Init(saved) =
-            let model =
-                match saved |> Option.bind Json.tryDeserialize with
-                | Some m -> m
-                | None -> Model.init ()
+            let freshJson = Json.serialize (Model.init())
 
-            modelOverride model |> Json.serialize
+            let mergedJson =
+                match saved with
+                | Some s -> Json.mergeJson freshJson s
+                | None -> freshJson
+
+            mergedJson
+            |> Json.deserialize<Model>
+            |> modelOverride
+            |> Json.serialize
 
         member _.Update(json) =
             let m = Json.deserialize<Model> (json)
