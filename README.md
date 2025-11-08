@@ -22,5 +22,6 @@
 ## Improvements
 Are there any? Currently wondering about:
 - [x] Avoiding re-inits on model slice changes (mainly additions)
-- [ ] Deprecating `modelOverride` (why is it necessary?)
+- [ ] Deprecating `modelOverride` (is it necessary for hot-reload?)
 - [ ] Avoiding `|> CBool.op_Implicit` (maybe not worth a util...)
+- [ ] Save game state, undo, redo, and time-travel debugging
