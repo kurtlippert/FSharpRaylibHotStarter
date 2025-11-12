@@ -1,6 +1,6 @@
 ﻿namespace GameAbstractions
 
 type IGame =
-    abstract member Init: string option -> string
-    abstract member Update: string -> string
-    abstract member Draw: string -> unit
+    abstract member Init: byte[] option -> byte[]
+    abstract member Update: byte[] -> byte[]
+    abstract member Draw: byte[] -> unit

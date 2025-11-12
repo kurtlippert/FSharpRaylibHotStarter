@@ -10,7 +10,7 @@ let dllPath = Path.GetFullPath("GameLogic/bin/Debug/net9.0/GameLogic.dll")
 let mutable lastWriteTime = DateTime.MinValue
 let mutable loadContext: AssemblyLoadContext option = None
 let mutable game: IGame option = None
-let mutable stateJson: string option = None
+let mutable stateBytes: byte[] option = None
 
 let loadGame () =
     try
@@ -37,16 +37,16 @@ let loadGame () =
             let instance = Activator.CreateInstance(gameType) :?> IGame
 
             let restoredState =
-                match stateJson with
-                | Some json ->
-                    printfn "Restoring game state from JSON..."
-                    instance.Init(Some json)
+                match stateBytes with
+                | Some bytes ->
+                    printfn "Restoring game state from bytes..."
+                    instance.Init(Some bytes)
                 | None ->
                     printfn "Initializing new game state..."
                     instance.Init(None)
 
             game <- Some instance
-            stateJson <- Some restoredState
+            stateBytes <- Some restoredState
             loadContext <- Some ctx
             printfn "✅ Game reloaded successfully."
     with e ->
@@ -70,11 +70,11 @@ let main _ =
     while not (Raylib.WindowShouldClose() |> CBool.op_Implicit) do
         tryReloadGame ()
 
-        match game, stateJson with
+        match game, stateBytes with
         | Some g, Some s ->
             let newState = g.Update(s)
             g.Draw(newState)
-            stateJson <- Some newState
+            stateBytes <- Some newState
         | _ -> ()
 
     Raylib.CloseWindow()
