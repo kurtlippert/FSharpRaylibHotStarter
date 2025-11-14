@@ -6,6 +6,7 @@ open Model
 open MessagePack
 open MessagePack.Resolvers
 open FSharp.Core
+open Main
 
 module MsgPack =
     open System.Reflection
@@ -44,68 +45,39 @@ module MsgPack =
         mergeObjects fresh saved
         fresh
 
-    let serialize (model: Model) : byte[] =
-        MessagePackSerializer.Serialize(model, options)
+    let serialize<'a> model =
+        MessagePackSerializer.Serialize<'a>(model, options)
 
-    let deserialize (bytes: byte[]) : Model =
-        MessagePackSerializer.Deserialize(bytes, options)
-
-module Json =
-    open System.Text.Json
-    open System.Text.Json.Serialization
-    open System.Text.Json.Nodes
-
-    let options =
-        let opts =
-            JsonSerializerOptions(WriteIndented = false, PropertyNamingPolicy = JsonNamingPolicy.CamelCase)
-
-        opts.IncludeFields <- true
-        opts.Converters.Add(JsonFSharpConverter())
-        opts
-
-    let mergeJson (freshJson: string) (savedJson: string) : string =
-        let freshNode = JsonNode.Parse(freshJson) :?> JsonObject
-        let savedNode = JsonNode.Parse(savedJson) :?> JsonObject
-
-        let rec merge (intoObj: JsonObject) (fromObj: JsonObject) =
-            for KeyValue(k, vSaved) in fromObj do
-                match vSaved, intoObj[k] with
-                // Both are objects → recursively merge
-                | (:? JsonObject as savedChild), (:? JsonObject as intoChild) -> merge intoChild savedChild
-
-                // Otherwise → overwrite intoObj with a CLONE of saved value
-                | _ -> intoObj[k] <- vSaved.DeepClone()
-
-        merge freshNode savedNode
-        freshNode.ToJsonString()
-
-    let serialize (model: 'Model) =
-        JsonSerializer.Serialize(model, options)
-
-    let deserialize<'Model> (json: string) =
-        JsonSerializer.Deserialize<'Model>(json, options)
+    let deserialize<'a> (bytes: byte[]) =
+        MessagePackSerializer.Deserialize<'a>(bytes, options)
 
 type Game() =
     interface IGame with
-        member _.Init maybeStateBytes =
-            let fresh = Model.init ()
+        member _.Init maybeState =
+            let freshModel, _ = Main.init()
 
             let restored =
-                match maybeStateBytes with
-                | Some s ->
-                    let saved = MsgPack.deserialize s
-                    MsgPack.merge fresh saved
-                | None -> fresh
+                match maybeState with
+                | Some bytes -> MsgPack.deserialize bytes
+                | None -> freshModel
 
-            restored |> modelOverride |> MsgPack.serialize
+            MsgPack.serialize restored
 
         member _.Update stateBytes =
-            let m = MsgPack.deserialize stateBytes
+            let model = MsgPack.deserialize<Model>(stateBytes)
 
-            Player.update m.Player
-            Counter.update m.Counter
+            // produce a Tick msg for both children
+            let dt = Raylib.GetFrameTime()
+            let msgBatch = [
+                PlayerMsg(Player.Msg.Travel dt)
+                CounterMsg(Counter.Msg.Tick dt)
+            ]
 
-            modelOverride m |> MsgPack.serialize
+            let final =
+                msgBatch
+                |> List.fold (fun m msg -> fst (Main.update msg m)) model
+
+            MsgPack.serialize final
 
         member _.Draw stateBytes =
             let m = MsgPack.deserialize stateBytes

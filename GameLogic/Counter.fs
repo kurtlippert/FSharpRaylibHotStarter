@@ -1,18 +1,23 @@
 module Counter
 
 open Raylib_cs
+open Elmish
 
-type Counter =
-    { mutable time: float32 }
+type Model =
+    { Time: float32 }
 
-let init () : Counter =
-    { time = 0f }
+let init () =
+    { Time = 0f }, Cmd.none
 
-let applyStaticOverrides (_: Counter) =
-    () // no static overrides right now
+type Msg =
+    | Tick of float32
 
-let update (c: Counter) =
-    c.time <- c.time + Raylib.GetFrameTime()
+// let applyStaticOverrides (_: Counter) =
+//     () // no static overrides right now
 
-let draw (c: Counter) =
-    Raylib.DrawText($"time: {int c.time}", 10, 30, 20, Color.Black)
+let update msg model =
+    match msg with
+    | Tick dt -> { model with Time = model.Time + dt }, Cmd.none 
+
+let draw model =
+    Raylib.DrawText($"time: {int model.Time}", 10, 30, 20, Color.Black)
