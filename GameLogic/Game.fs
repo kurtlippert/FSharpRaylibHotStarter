@@ -2,7 +2,6 @@
 
 open Raylib_cs
 open GameAbstractions
-open Model
 open MessagePack
 open MessagePack.Resolvers
 open FSharp.Core

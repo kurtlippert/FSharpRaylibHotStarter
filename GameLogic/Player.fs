@@ -23,10 +23,6 @@ type Msg =
   | Travel of float32
   | ChangeColor of Color
 
-// let applyStaticOverrides (p: Model) =
-//     p.Color <- Color.Red
-//     p.Attributes.Str <- 12
-
 let update msg model =
     match msg with
     | Travel dt ->

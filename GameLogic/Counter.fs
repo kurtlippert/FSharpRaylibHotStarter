@@ -12,9 +12,6 @@ let init () =
 type Msg =
     | Tick of float32
 
-// let applyStaticOverrides (_: Counter) =
-//     () // no static overrides right now
-
 let update msg model =
     match msg with
     | Tick dt -> { model with Time = model.Time + dt }, Cmd.none 
